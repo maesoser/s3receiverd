@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"errors"
 )
 
 type S3Server struct {
@@ -20,37 +21,37 @@ type S3Server struct {
 	Domain    string
 	Secret    string
 	AccessKey string
+	RootFolder    string
 }
 
 func (s *S3Server) ProcessRequest(w http.ResponseWriter, r *http.Request) {
 
 	if s.Verbose == true {
-		log.Printf("[ Verbose ] Received %s %s\n", r.Method, r.URL)
-		log.Printf("[ Verbose ] Query %v\n", r.URL.Query())
+		log.Printf("Received %s %s\n", r.Method, r.URL)
+		log.Printf("Query %v\n", r.URL.Query())
 		for name, headers := range r.Header {
 			name = strings.ToLower(name)
 			for _, h := range headers {
-				log.Printf("[ Header ] %v: %v\n", name, h)
+				log.Printf("Header: %v: %v\n", name, h)
 			}
 		}
 	}
 
-	signer := Signer{}
-	signer.Verbose = s.Verbose
-	if err := signer.ReadAuthHeader(r); err != nil {
-		log.Printf("[ Auth ] %s\n", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if r.Method == "GET" {
+		fmt.Fprintf(w, "ok\n")
+        return
+	} 
+
+	if err := ValidateSignature(r, s.Secret, s.AccessKey); err != nil {
+		log.Printf("Error: %s\n", err)
 		return
 	}
-	if err := signer.CheckAuthHeader(r, s.Secret, s.AccessKey); err != nil {
-		log.Printf("[ Auth ] %s\n", err)
-	}
 
-	if r.Method == "GET" && strings.Contains(r.URL.Path, "/status") {
-		fmt.Fprintf(w, "OK\n")
-		w.WriteHeader(200)
-	} else if r.Method == "PUT" && !strings.Contains(r.URL.RawQuery, "uploadId=") {
-		s.processUpload(w, r)
+    if r.Method == "PUT" && !strings.Contains(r.URL.RawQuery, "uploadId=") {
+		err := s.processUpload(w, r)
+		if err != nil{
+			log.Println(err)
+		}
 	} else if r.Method == "PUT" && strings.Contains(r.URL.RawQuery, "uploadId=") {
 		s.processUploadPart(w, r)
 	} else if r.Method == "POST" && r.URL.RawQuery == "uploads" {
@@ -64,31 +65,37 @@ func (s *S3Server) ProcessRequest(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (s *S3Server) processUpload(w http.ResponseWriter, r *http.Request) {
-	contentMD5 := r.Header.Get("content-md5")
+func (s *S3Server) processUpload(w http.ResponseWriter, r *http.Request) error {
+	
 	contentLengthStr := r.Header.Get("content-length")
 	contentLength, err := strconv.Atoi(contentLengthStr)
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 	bucket, filename := ParseS3Url(r.URL)
+	if s.RootFolder != ""{
+		bucket = s.RootFolder
+	}
 	log.Printf("Received %s/%s (%d bytes)\n", bucket, filename, contentLength)
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("Error reading body: %v", err)
 		http.Error(w, "can't read body", http.StatusBadRequest)
-		return
+		return err
 	}
 
 	hash := md5.New() 
 	io.WriteString(hash, string(body))
 	newMD5 := b64.StdEncoding.EncodeToString(hash.Sum(nil))
+	contentMD5 := r.Header.Get("content-md5")
     if contentMD5 != newMD5 {
-    	log.Printf("[ MD5 ] Warning, MD5Sum mismatch\n")
+		return errors.New("invalid md5")
     }
+
+	// /s3/20210503/20210503T210124Z_20210503T210154Z_0d4c0d2b.log.gz
+	// Received /20210503/20210503T210624Z_20210503T210654Z_126b8a6b.log.gz
     
 	if err := os.MkdirAll(bucket, os.ModePerm); err != nil {
-		log.Printf("Error: %s\n", err)
+		return err
 	}
 
 	if filename[len(filename)-3:] == ".gz" {
@@ -106,19 +113,19 @@ func (s *S3Server) processUpload(w http.ResponseWriter, r *http.Request) {
 		filename = time.Now().Format("20060201") + ".log"
 		file, err := os.OpenFile(bucket+"/"+filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			log.Println(err)
+			return err
 		}
 		defer file.Close()
 		if _, err := file.Write(body); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	} else {
 		if err := ioutil.WriteFile(bucket+"/"+filename, body, 0644); err != nil {
-			log.Printf("Error saving logs: %s\n", err)
-			return
+			return err
 		}
 	}
 
 	w.Header().Set("Etag", contentMD5)
 	w.WriteHeader(200)
+	return nil
 }

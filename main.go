@@ -37,7 +37,8 @@ func main() {
 	ListenAddr := flag.String("port", GetEnvStr("SERVER_PORT", "0.0.0.0:8443"), "Server Port")
 	KeyArg := flag.String("key", GetEnvStr("SERVER_KEY", "data/key.pem"), "Server Key")
 	CertArg := flag.String("cert", GetEnvStr("SERVER_CERT", "data/certificate.pem"), "Server Certificate")
-	SNIName := flag.String("domain", GetEnvStr("SNI_NAME", "localhost"), "Server Name")
+	SNIName := flag.String("sniname", GetEnvStr("SNI_NAME", "localhost"), "Server Name")
+	RootFolder := flag.String("folder", GetEnvStr("ROOT_FOLDER", "/logs"), "Root folder to leave the logs, overriding the bucket folders")
 	AccessKey := flag.String("access-key", GetEnvStr("ACCESS_KEY", "AKIAI44QH8DHBEXAMPLE"), "Access Key ID")
 	Secret := flag.String("secret", GetEnvStr("SECRET", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"), "Secret access key")
 	Verbose := flag.Bool("verbose", false, "Verbose Output")
@@ -51,6 +52,7 @@ func main() {
 		AccessKey: *AccessKey,
 		Secret:    *Secret,
 		Aggregate: *Aggregate,
+		RootFolder: *RootFolder,
 	}
 
 	http.HandleFunc("/", server.ProcessRequest)
