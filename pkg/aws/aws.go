@@ -1,10 +1,11 @@
 package aws
 
 import (
-    b64 "encoding/base64"
-    "io"
-    "crypto/md5"
+	"crypto/md5"
+	b64 "encoding/base64"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,16 +13,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"errors"
 )
 
 type S3Server struct {
-	Verbose   bool
-	Aggregate bool
-	Domain    string
-	Secret    string
-	AccessKey string
-	RootFolder    string
+	Verbose    bool
+	Aggregate  bool
+	Domain     string
+	Secret     string
+	AccessKey  string
+	RootFolder string
 }
 
 func (s *S3Server) ProcessRequest(w http.ResponseWriter, r *http.Request) {
@@ -39,17 +39,18 @@ func (s *S3Server) ProcessRequest(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
 		fmt.Fprintf(w, "ok\n")
-        return
-	} 
-
-	if err := ValidateSignature(r, s.Secret, s.AccessKey); err != nil {
-		log.Printf("Error: %s\n", err)
 		return
 	}
 
-    if r.Method == "PUT" && !strings.Contains(r.URL.RawQuery, "uploadId=") {
+	if err := ValidateSignature(r, s.Secret, s.AccessKey); err != nil {
+		log.Printf("Error: %s\n", err)
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	if r.Method == "PUT" && !strings.Contains(r.URL.RawQuery, "uploadId=") {
 		err := s.processUpload(w, r)
-		if err != nil{
+		if err != nil {
 			log.Println(err)
 		}
 	} else if r.Method == "PUT" && strings.Contains(r.URL.RawQuery, "uploadId=") {
@@ -60,20 +61,20 @@ func (s *S3Server) ProcessRequest(w http.ResponseWriter, r *http.Request) {
 		s.processMultipartComplete(w, r)
 	} else {
 		log.Printf("Unknown request %s %s\n", r.Method, r.URL.String())
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusBadRequest)
 	}
 
 }
 
 func (s *S3Server) processUpload(w http.ResponseWriter, r *http.Request) error {
-	
+
 	contentLengthStr := r.Header.Get("content-length")
 	contentLength, err := strconv.Atoi(contentLengthStr)
 	if err != nil {
 		return err
 	}
 	bucket, filename := ParseS3Url(r.URL)
-	if s.RootFolder != ""{
+	if s.RootFolder != "" {
 		bucket = s.RootFolder
 	}
 	log.Printf("Received %s/%s (%d bytes)\n", bucket, filename, contentLength)
@@ -83,17 +84,14 @@ func (s *S3Server) processUpload(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	hash := md5.New() 
+	hash := md5.New()
 	io.WriteString(hash, string(body))
 	newMD5 := b64.StdEncoding.EncodeToString(hash.Sum(nil))
 	contentMD5 := r.Header.Get("content-md5")
-    if contentMD5 != newMD5 {
+	if contentMD5 != newMD5 {
 		return errors.New("invalid md5")
-    }
+	}
 
-	// /s3/20210503/20210503T210124Z_20210503T210154Z_0d4c0d2b.log.gz
-	// Received /20210503/20210503T210624Z_20210503T210654Z_126b8a6b.log.gz
-    
 	if err := os.MkdirAll(bucket, os.ModePerm); err != nil {
 		return err
 	}

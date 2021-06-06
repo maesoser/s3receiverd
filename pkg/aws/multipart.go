@@ -59,7 +59,7 @@ func (s *S3Server) processUploadPart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Etag", contentMD5)
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 
 }
 
@@ -134,6 +134,6 @@ func (s *S3Server) processMultipartComplete(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		log.Fatalf("xml.MarshalIndent failed with '%s'\n", err)
 	}
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOk)
 	fmt.Fprintf(w, string(xmlString))
 }
