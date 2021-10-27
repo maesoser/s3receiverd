@@ -6,6 +6,6 @@ RUN go mod init && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldfl
 
 FROM scratch
 
-COPY --from=builder /go/src/github.com/maesoser/logrecv/logrecv /app/s3receiverd
+COPY --from=builder /go/src/github.com/maesoser/s3receiverd/s3receiverd /app/s3receiverd
 
 ENTRYPOINT ["/app/s3receiverd","--aggregate"]
