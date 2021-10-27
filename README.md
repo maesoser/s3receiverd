@@ -1,6 +1,6 @@
-# ssrxd
+# s3receiverd
 
-Simple Storage Receiver Daemon (ssrxd) is a tiny HTTP server that is able to receive and store logs sent by an AWS-S3 compatible client using either putObject or uploadPart.
+s3 Receiver Daemon (s3receiverd) is a tiny HTTP server that is able to receive and store logs sent by an AWS-S3 compatible client using either putObject or uploadPart.
 
 It was designed as a simple receiver for [Cloudflare Logs](https://developers.cloudflare.com/logs/)
 
@@ -37,7 +37,7 @@ curl -s -X POST \
 
 ```yaml
   ssrxd:
-    container_name: logreceiver
+    container_name: s3receiverd
     restart: unless-stopped
     mem_limit: 64m
     cpu_count: 1
@@ -46,7 +46,7 @@ curl -s -X POST \
         max-size: "1m"
         max-file: "1"
     build:
-     context: ./containers/logrecv
+     context: ./containers/s3receiverd
      dockerfile: Dockerfile
     volumes:
      - ./data/logrecv:/logs:z
